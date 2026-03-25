@@ -14,7 +14,7 @@
   --color-on-surface: #e5e2e1;
   --color-ghost-border: rgba(255, 255, 255, 0.1);
 
-  --font-inter: var(--font-inter);
+  --font-inter: 'Inter', ui-sans-serif, system-ui, sans-serif;
 
   --radius-organic: 2.5rem;
   --radius-soft: 1.25rem;

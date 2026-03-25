@@ -94,7 +94,11 @@ export function CanvasView({ cleanedTree }: CanvasViewProps) {
           <button onClick={fitToView} className="p-1.5 hover:bg-white/10 rounded text-white/40 hover:text-white transition-colors">
             <Maximize2 className="w-4 h-4" />
           </button>
-          <button className="p-1.5 text-white/20">
+          <button
+            onClick={() => { setZoom(0.5); setPan({ x: 40, y: 40 }); }}
+            className="p-1.5 hover:bg-white/10 rounded text-white/40 hover:text-white transition-colors"
+            title="Reset position"
+          >
             <Move className="w-4 h-4" />
           </button>
         </div>
