@@ -18,18 +18,24 @@ const getMemoryFilePath = () => {
 export async function POST(request: NextRequest) {
   try {
     const memoryFile = getMemoryFilePath();
-    let sessions = [];
+    let sessions: Record<string, unknown>[] = [];
 
-    if (fs.existsSync(memoryFile)) {
-      const fileData = fs.readFileSync(memoryFile, "utf-8");
-      try {
-        sessions = JSON.parse(fileData).sessions || [];
-      } catch (e) {
-        sessions = [];
+    try {
+      if (fs.existsSync(memoryFile)) {
+        const fileData = fs.readFileSync(memoryFile, "utf-8");
+        const parsed = JSON.parse(fileData);
+        sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
       }
+    } catch {
+      sessions = [];
     }
 
     const newSession = await request.json();
+
+    // Limit session history to prevent unbounded file growth
+    if (sessions.length >= 500) {
+      sessions = sessions.slice(-400);
+    }
 
     sessions.push({
       ...newSession,

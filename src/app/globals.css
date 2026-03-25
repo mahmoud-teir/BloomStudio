@@ -45,9 +45,6 @@
     @apply text-[0.6875rem] font-bold uppercase tracking-[0.05em];
   }
 
-  .ghost-button {
-    @apply bg-transparent border border-white/10 hover:bg-obsidian-high transition-all;
-  }
 }
 
 /* Custom scrollbar for obsidian feel */

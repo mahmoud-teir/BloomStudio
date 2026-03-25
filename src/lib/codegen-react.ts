@@ -10,6 +10,10 @@ function sanitize(name: string): string {
   return name.replace(/[^a-zA-Z0-9 _\-]/g, '').split(/[\s_\-]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('') || 'Component';
 }
 
+function escapeAttr(str: string): string {
+  return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function figmaColorToCss(color: { r: number; g: number; b: number; a: number }): string {
   if (!color) return 'transparent';
   const r = Math.round(color.r * 255);
@@ -71,12 +75,12 @@ function generateNode(node: UINode, indent: string): string {
 
     case 'Icon': {
       const iconName = sanitize(node.name).toLowerCase();
-      return `${indent}<img src="/icons/${iconName}.svg" alt="${node.name}" style={{ width: ${Math.round(node.width || 24)}, height: ${Math.round(node.height || 24)} }} />\n`;
+      return `${indent}<img src="/icons/${iconName}.svg" alt="${escapeAttr(node.name)}" style={{ width: ${Math.round(node.width || 24)}, height: ${Math.round(node.height || 24)} }} />\n`;
     }
 
     case 'Image': {
       const imgName = sanitize(node.name).toLowerCase();
-      return `${indent}<img src="/images/${imgName}.png" alt="${node.name}" style={{ width: ${Math.round(node.width || 100)}, height: ${Math.round(node.height || 100)}, objectFit: 'cover', borderRadius: ${node.cornerRadius || 0} }} />\n`;
+      return `${indent}<img src="/images/${imgName}.png" alt="${escapeAttr(node.name)}" style={{ width: ${Math.round(node.width || 100)}, height: ${Math.round(node.height || 100)}, objectFit: 'cover', borderRadius: ${node.cornerRadius || 0} }} />\n`;
     }
 
     case 'Divider':
