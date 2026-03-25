@@ -42,11 +42,15 @@ function sanitizeName(raw: string): string {
 function isIconNode(node: FigmaNode): boolean {
   const n = (node.name || '').toLowerCase();
   // Name-based
-  if (n.includes('icon') || n.startsWith('ic_') || n.startsWith('ic/') || n.includes('/icon')) return true;
-  // Size-based: small vector element
+  if (n.includes('icon') || n.startsWith('ic_') || n.startsWith('ic/') || n.includes('/icon') || n.includes('logo')) return true;
+  // Size-based: small vector element (≤ 48px) that's not text
   if (node.absoluteBoundingBox) {
     const { width, height } = node.absoluteBoundingBox;
-    if (width > 0 && width <= 48 && height > 0 && height <= 48 && node.type !== 'TEXT') return true;
+    if (width > 0 && width <= 48 && height > 0 && height <= 48 && node.type !== 'TEXT') {
+      // Must be a vector-like type or have children (component/instance)
+      const vectorLike = ['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'ELLIPSE', 'REGULAR_POLYGON', 'COMPONENT', 'INSTANCE'];
+      if (vectorLike.includes(node.type) || node.type === 'FRAME' || node.type === 'GROUP') return true;
+    }
   }
   return false;
 }
@@ -56,16 +60,32 @@ function isImageNode(node: FigmaNode): boolean {
   // Name-based
   if (n.includes('image') || n.includes('photo') || n.includes('avatar') ||
       n.includes('thumbnail') || n.includes('banner') || n.includes('hero') ||
-      n.includes('cover') || n.includes('picture') || n.includes('bg_')) return true;
+      n.includes('cover') || n.includes('picture') || n.includes('bg_') ||
+      n.includes('illustration') || n.includes('graphic') || n.includes('artwork') ||
+      n.includes('screenshot') || n.includes('preview') || n.includes('placeholder')) return true;
   // Fill-based: explicit IMAGE fill type
   if (node.fills?.some(f => f.type === 'IMAGE')) return true;
   return false;
 }
 
 function isVectorExportable(node: FigmaNode): boolean {
-  // VECTOR, BOOLEAN_OPERATION, STAR, LINE, ELLIPSE, POLYGON types
   const vectorTypes = ['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'ELLIPSE', 'REGULAR_POLYGON'];
   return vectorTypes.includes(node.type);
+}
+
+function isExportableComponent(node: FigmaNode): boolean {
+  // COMPONENT or INSTANCE that are medium-sized (not tiny icons, not full screens)
+  if (node.type !== 'COMPONENT' && node.type !== 'INSTANCE') return false;
+  const w = node.absoluteBoundingBox?.width || 0;
+  const h = node.absoluteBoundingBox?.height || 0;
+  // Skip if already caught as icon (≤48px) or if it's a full screen (>600px both)
+  if (w <= 48 && h <= 48) return false;
+  if (w > 600 && h > 600) return false;
+  // Must have some visual content
+  if (node.fills?.some(f => f.visible !== false && (f.type === 'SOLID' || f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL' || f.type === 'IMAGE'))) return true;
+  // Or has children (it's a composed component)
+  if (node.children && node.children.length > 0) return true;
+  return false;
 }
 
 /* ──────────── Main Extractor ──────────── */
@@ -144,6 +164,21 @@ export function extractAllAssets(root: FigmaNode): ExtractedAsset[] {
         height: Math.round(h),
       });
       return;
+    }
+
+    // ── Exportable components (PNG — buttons, cards, UI pieces) ──
+    if (isExportableComponent(node) && !seenIds.has(node.id) && w > 0 && h > 0) {
+      seenIds.add(node.id);
+      assets.push({
+        id: node.id,
+        name: sanitizeName(node.name),
+        originalName: node.name,
+        category: 'image',
+        format: 'png',
+        width: Math.round(w),
+        height: Math.round(h),
+      });
+      // Still recurse into component children for nested icons/images
     }
 
     // Recurse

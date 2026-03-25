@@ -76,25 +76,34 @@ export async function POST(request: NextRequest) {
   const flutterCode = generateFlutterFile(uiTree, componentName);
 
   // ── Extract assets (SVG icons + PNG images) ──
-  let rawAssets = extractAllAssets(rawNode);
+  const rawAssets = extractAllAssets(rawNode);
   const { svgIds, pngIds } = groupAssetsByFormat(rawAssets);
 
-  // Fetch export URLs from Figma Images API
-  let svgUrls: Record<string, string | null> = {};
-  let pngUrls: Record<string, string | null> = {};
+  // Fetch export URLs from Figma Images API (batch in chunks of 50)
+  const svgUrls: Record<string, string | null> = {};
+  const pngUrls: Record<string, string | null> = {};
 
-  try {
-    if (svgIds.length > 0) {
-      const svgData = await getFigmaImages(fileKey, svgIds, 'svg', 1);
-      svgUrls = svgData.images || {};
+  async function batchFetchImages(ids: string[], format: 'svg' | 'png', scale: number, target: Record<string, string | null>) {
+    const batchSize = 50;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      try {
+        const data = await getFigmaImages(fileKey, batch, format, scale);
+        if (data.images) {
+          Object.assign(target, data.images);
+        }
+      } catch (err) {
+        console.error(`Asset batch fetch failed (${format}, batch ${i}):`, err);
+        // Continue with remaining batches
+      }
     }
-    if (pngIds.length > 0) {
-      const pngData = await getFigmaImages(fileKey, pngIds, 'png', 2);
-      pngUrls = pngData.images || {};
-    }
-  } catch {
-    // Asset URL fetching is non-critical — continue without URLs
   }
+
+  // Fetch SVG and PNG URLs in parallel
+  await Promise.all([
+    svgIds.length > 0 ? batchFetchImages(svgIds, 'svg', 1, svgUrls) : Promise.resolve(),
+    pngIds.length > 0 ? batchFetchImages(pngIds, 'png', 2, pngUrls) : Promise.resolve(),
+  ]);
 
   const assets = attachExportUrls(rawAssets, svgUrls, pngUrls);
   const assetStats = getAssetStats(assets);
