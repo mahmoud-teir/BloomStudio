@@ -99,11 +99,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Fetch SVG and PNG URLs in parallel
+  // Fetch SVG and PNG URLs in parallel (errors are handled per-batch inside batchFetchImages)
   await Promise.all([
     svgIds.length > 0 ? batchFetchImages(svgIds, 'svg', 1, svgUrls) : Promise.resolve(),
     pngIds.length > 0 ? batchFetchImages(pngIds, 'png', 2, pngUrls) : Promise.resolve(),
-  ]);
+  ]).catch((err) => {
+    console.error('Asset fetch pipeline error:', err);
+  });
 
   const assets = attachExportUrls(rawAssets, svgUrls, pngUrls);
   const assetStats = getAssetStats(assets);

@@ -13,7 +13,7 @@ const FIGMA_API_BASE = 'https://api.figma.com/v1';
 function getHeaders() {
   const token = process.env.FIGMA_PAT;
   if (!token) {
-    throw new Error('FIGMA_PAT environment variable is not defined.');
+    throw new Error('FIGMA_PAT environment variable is not defined. Get your Personal Access Token from: https://www.figma.com/developers/api#access-tokens and add it to your .env file.');
   }
   return {
     'X-Figma-Token': token,

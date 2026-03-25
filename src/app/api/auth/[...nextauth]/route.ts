@@ -27,9 +27,14 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   );
 }
 
+if (!process.env.NEXTAUTH_SECRET) {
+  console.warn("⚠️  NEXTAUTH_SECRET is not set. Auth will not work in production. Generate one with: openssl rand -base64 32");
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,
   providers,
+  secret: process.env.NEXTAUTH_SECRET,
   session: {
     strategy: providers.length > 0 ? "database" : "jwt",
   },
