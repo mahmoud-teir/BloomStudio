@@ -64,6 +64,7 @@ interface LibraryViewProps {
   designSystem: DesignSystem | null;
   assets?: ExtractedAsset[];
   assetStats?: AssetStats | null;
+  assetErrors?: string[];
   fileKey?: string;
 }
 
@@ -82,7 +83,7 @@ function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
   return map;
 }
 
-export function LibraryView({ uiTree, stats, designSystem, assets = [], assetStats, fileKey }: LibraryViewProps) {
+export function LibraryView({ uiTree, stats, designSystem, assets = [], assetStats, assetErrors, fileKey }: LibraryViewProps) {
   const [activeSection, setActiveSection] = React.useState<'components' | 'types' | 'tokens' | 'assets'>('components');
   const [assetFilter, setAssetFilter] = React.useState<'all' | 'icon' | 'image'>('all');
   const [assetSearch, setAssetSearch] = React.useState('');
@@ -247,7 +248,9 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
                   </button>
                 ) : (
                   <span className="text-[10px] text-yellow-400/60 px-3 py-1 rounded-lg bg-yellow-400/5 border border-yellow-400/10">
-                    Preview URLs unavailable — try re-running the engine
+                    {assetErrors && assetErrors.length > 0
+                      ? `Preview failed: ${assetErrors[0]}`
+                      : 'Preview URLs unavailable — try re-running the engine'}
                   </span>
                 )}
               </div>
