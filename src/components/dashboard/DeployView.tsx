@@ -7,9 +7,22 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+interface ExtractedAsset {
+  id: string;
+  name: string;
+  originalName: string;
+  category: 'icon' | 'image' | 'drawable';
+  format: 'svg' | 'png';
+  width: number;
+  height: number;
+  exportUrl?: string;
+}
+
 interface DeployViewProps {
   codeData: { react: string; swiftui: string; compose: string; flutter: string } | null;
   componentName: string;
+  assets?: ExtractedAsset[];
+  fileKey?: string;
 }
 
 interface ExportTarget {
@@ -28,7 +41,7 @@ const TARGETS: ExportTarget[] = [
   { key: 'flutter', label: 'Flutter', ext: '.dart', icon: FileType, color: 'text-blue-400', description: 'Flutter widget for cross-platform' },
 ];
 
-export function DeployView({ codeData, componentName }: DeployViewProps) {
+export function DeployView({ codeData, componentName, assets = [], fileKey }: DeployViewProps) {
   const [copiedKey, setCopiedKey] = React.useState<string | null>(null);
   const [zipping, setZipping] = React.useState(false);
 
@@ -73,6 +86,25 @@ export function DeployView({ codeData, componentName }: DeployViewProps) {
       zip.folder('compose')?.file(`${componentName}Screen.kt`, codeData.compose);
       zip.folder('flutter')?.file(`${componentName}Screen.dart`, codeData.flutter);
 
+      // Include extracted assets (icons as SVG, images as PNG)
+      const downloadableAssets = assets.filter(a => a.exportUrl && a.category !== 'drawable');
+      if (downloadableAssets.length > 0) {
+        const iconsFolder = zip.folder('assets/icons');
+        const imagesFolder = zip.folder('assets/images');
+
+        for (const asset of downloadableAssets) {
+          try {
+            const res = await fetch(asset.exportUrl!);
+            if (!res.ok) continue;
+            const blob = await res.blob();
+            const folder = asset.category === 'icon' ? iconsFolder : imagesFolder;
+            folder?.file(`${asset.name}.${asset.format}`, blob);
+          } catch {
+            // Skip failed asset downloads
+          }
+        }
+      }
+
       const blob = await zip.generateAsync({ type: 'blob' });
       saveAs(blob, `${componentName}-export.zip`);
     } catch (e) {
@@ -102,7 +134,7 @@ export function DeployView({ codeData, componentName }: DeployViewProps) {
             </div>
             <div>
               <h3 className="font-medium">Download All Platforms</h3>
-              <p className="text-xs text-white/40 mt-0.5">ZIP containing React, SwiftUI, Compose, and Flutter files</p>
+              <p className="text-xs text-white/40 mt-0.5">ZIP containing React, SwiftUI, Compose, Flutter files{assets.length > 0 ? ` + ${assets.filter(a => a.category !== 'drawable').length} assets` : ''}</p>
             </div>
           </div>
           <button

@@ -7,6 +7,8 @@ import { generateSwiftUIFile } from "@/lib/codegen-swiftui";
 import { generateSmartComposeFile } from "@/lib/codegen-compose-ai";
 import { generateFlutterFile } from "@/lib/codegen-flutter";
 import { extractDesignSystem } from "@/lib/design-system";
+import { extractAllAssets, groupAssetsByFormat, attachExportUrls, getAssetStats } from "@/lib/svg-extractor";
+import { getFigmaImages } from "@/lib/figma-api";
 
 function parseFigmaUrl(url: string): { fileKey: string; nodeId?: string } | null {
   try {
@@ -73,6 +75,30 @@ export async function POST(request: NextRequest) {
   const composeCode = generateSmartComposeFile(uiTree, componentName);
   const flutterCode = generateFlutterFile(uiTree, componentName);
 
+  // ── Extract assets (SVG icons + PNG images) ──
+  let rawAssets = extractAllAssets(rawNode);
+  const { svgIds, pngIds } = groupAssetsByFormat(rawAssets);
+
+  // Fetch export URLs from Figma Images API
+  let svgUrls: Record<string, string | null> = {};
+  let pngUrls: Record<string, string | null> = {};
+
+  try {
+    if (svgIds.length > 0) {
+      const svgData = await getFigmaImages(fileKey, svgIds, 'svg', 1);
+      svgUrls = svgData.images || {};
+    }
+    if (pngIds.length > 0) {
+      const pngData = await getFigmaImages(fileKey, pngIds, 'png', 2);
+      pngUrls = pngData.images || {};
+    }
+  } catch {
+    // Asset URL fetching is non-critical — continue without URLs
+  }
+
+  const assets = attachExportUrls(rawAssets, svgUrls, pngUrls);
+  const assetStats = getAssetStats(assets);
+
   return NextResponse.json({
     stats,
     code: { react: reactCode, swiftui: swiftUICode, compose: composeCode, flutter: flutterCode },
@@ -87,9 +113,12 @@ export async function POST(request: NextRequest) {
         { name: 'Validate', status: 'done', detail: `${pipelineStats.issueCount.error} errors, ${pipelineStats.issueCount.warning} warnings, ${pipelineStats.issueCount.info} info` },
         { name: 'Build UI Tree', status: 'done', detail: `${stats.totalNodes} total nodes` },
         { name: 'Generate Code', status: 'done', detail: '4 platforms' },
+        { name: 'Extract Assets', status: 'done', detail: `${assetStats.icons} icons, ${assetStats.images} images` },
       ],
     },
     designSystem,
+    assets,
+    assetStats,
     fileKey,
     componentName,
   });
