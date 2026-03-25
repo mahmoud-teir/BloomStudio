@@ -12,6 +12,25 @@ import type { UINode } from '@/lib/smart-parser';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DesignSystemData = any;
 
+interface ExtractedAsset {
+  id: string;
+  name: string;
+  originalName: string;
+  category: 'icon' | 'image' | 'drawable';
+  format: 'svg' | 'png';
+  width: number;
+  height: number;
+  exportUrl?: string;
+}
+
+interface AssetStats {
+  total: number;
+  icons: number;
+  images: number;
+  drawables: number;
+  uniqueNodes: number;
+}
+
 // Lazy load heavy dashboard views
 const DesktopView = React.lazy(() => import('@/components/dashboard/DesktopView').then(m => ({ default: m.DesktopView })));
 const LayerHierarchy = React.lazy(() => import('@/components/dashboard/LayerHierarchy').then(m => ({ default: m.LayerHierarchy })));
@@ -98,6 +117,8 @@ export default function ObsidianDashboard() {
   const [fileKey, setFileKey] = React.useState('');
   const [componentName, setComponentName] = React.useState('FigmaComponent');
   const [previewImageUrl, setPreviewImageUrl] = React.useState('');
+  const [assets, setAssets] = React.useState<ExtractedAsset[]>([]);
+  const [assetStats, setAssetStats] = React.useState<AssetStats | null>(null);
 
   const handleGenerate = async () => {
     if (!url) return;
@@ -128,6 +149,8 @@ export default function ObsidianDashboard() {
       setDesignSystem(data.designSystem);
       setFileKey(data.fileKey || '');
       setComponentName(data.componentName || 'FigmaComponent');
+      setAssets(data.assets || []);
+      setAssetStats(data.assetStats || null);
       setLatency(Date.now() - start);
 
       // Fetch preview image
@@ -403,12 +426,12 @@ export default function ObsidianDashboard() {
 
             {/* Library */}
             {activeTopNav === 'library' && (
-              <LibraryView uiTree={uiTree} stats={stats} designSystem={designSystem} />
+              <LibraryView uiTree={uiTree} stats={stats} designSystem={designSystem} assets={assets} assetStats={assetStats} fileKey={fileKey} />
             )}
 
             {/* Deploy */}
             {activeTopNav === 'deploy' && (
-              <DeployView codeData={codeData} componentName={componentName} />
+              <DeployView codeData={codeData} componentName={componentName} assets={assets} fileKey={fileKey} />
             )}
           </React.Suspense>
         </main>
