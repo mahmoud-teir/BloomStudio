@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  --color-obsidian-bg: #131313;
+  --color-obsidian-lowest: #0e0e0e;
+  --color-obsidian-low: #1c1b1b;
+  --color-obsidian-container: #201f1f;
+  --color-obsidian-high: #2a2a2a;
+  --color-obsidian-highest: #353534;
+  --color-obsidian-bright: #3a3939;
+
+  --color-electric-blue: #00f5ff;
+  --color-deep-violet: #571bc1;
+  --color-on-surface: #e5e2e1;
+  --color-ghost-border: rgba(255, 255, 255, 0.1);
+
+  --font-inter: var(--font-inter);
+
+  --radius-organic: 2.5rem;
+  --radius-soft: 1.25rem;
+}
+
+@layer base {
+  body {
+    @apply bg-obsidian-bg text-on-surface font-inter antialiased;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-obsidian-container/40 backdrop-blur-xl border border-ghost-border shadow-2xl;
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, #00f5ff 0%, #571bc1 100%);
+  }
+
+  .text-display-lg {
+    @apply text-[3.5rem] leading-tight font-light tracking-[-0.02em];
+  }
+
+  .text-label-sm {
+    @apply text-[0.6875rem] font-bold uppercase tracking-[0.05em];
+  }
+
+  .ghost-button {
+    @apply bg-transparent border border-white/10 hover:bg-obsidian-high transition-all;
+  }
+}
+
+/* Custom scrollbar for obsidian feel */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0e0e0e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #353534;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00f5ff;
+}

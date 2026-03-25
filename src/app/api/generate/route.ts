@@ -1,0 +1,88 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getFigmaFile } from "@/lib/figma-api";
+import { runPipeline } from "@/lib/pipeline";
+import { buildUITree, getTreeStats } from "@/lib/smart-parser";
+import { generateReactComponent } from "@/lib/codegen";
+import { generateSwiftUIFile } from "@/lib/codegen-swiftui";
+import { generateSmartComposeFile } from "@/lib/codegen-compose-ai";
+import { generateFlutterFile } from "@/lib/codegen-flutter";
+import { extractDesignSystem } from "@/lib/design-system";
+
+function parseFigmaUrl(url: string): { fileKey: string; nodeId?: string } | null {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split('/');
+    const keyIndex = Math.max(parts.indexOf('design'), parts.indexOf('file'));
+    if (keyIndex === -1 || keyIndex + 1 >= parts.length) return null;
+    return {
+      fileKey: parts[keyIndex + 1],
+      nodeId: parsed.searchParams.get('node-id') ?? undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeName(name: string): string {
+  return name
+    .replace(/[^a-zA-Z0-9 _\-]/g, '')
+    .split(/[\s_\-]+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join('') || 'FigmaComponent';
+}
+
+export async function POST(request: NextRequest) {
+  const { url } = await request.json();
+  if (!url) return NextResponse.json({ error: "Missing url" }, { status: 400 });
+
+  const parsed = parseFigmaUrl(url);
+  if (!parsed) return NextResponse.json({ error: "Invalid Figma URL" }, { status: 400 });
+
+  const { fileKey, nodeId } = parsed;
+
+  let fileData: any;
+  try {
+    fileData = await getFigmaFile(fileKey, nodeId);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+
+  const apiNodeId = nodeId?.replace(/-/g, ':');
+  const rawNode = apiNodeId && fileData.nodes?.[apiNodeId]
+    ? fileData.nodes[apiNodeId].document
+    : fileData.document?.children?.[0]?.children?.[0] ?? fileData.document?.children?.[0];
+
+  if (!rawNode) return NextResponse.json({ error: "No renderable node found" }, { status: 422 });
+
+  const { cleanedTree, issues, stats: pipelineStats } = runPipeline(rawNode);
+  const uiTree = buildUITree(cleanedTree);
+  const stats = getTreeStats(uiTree);
+  const componentName = sanitizeName(uiTree.name || fileData.name || 'FigmaComponent');
+  const designSystem = extractDesignSystem(rawNode);
+
+  const reactCode = generateReactComponent(cleanedTree, componentName);
+  const swiftUICode = generateSwiftUIFile(uiTree, componentName);
+  const composeCode = generateSmartComposeFile(uiTree, componentName);
+  const flutterCode = generateFlutterFile(uiTree, componentName);
+
+  return NextResponse.json({
+    stats,
+    code: { react: reactCode, swiftui: swiftUICode, compose: composeCode, flutter: flutterCode },
+    uiTree,
+    cleanedTree,
+    pipeline: {
+      issues,
+      pipelineStats,
+      stages: [
+        { name: 'Clean', status: 'done', detail: `Removed ${pipelineStats.nodesRemoved} nodes` },
+        { name: 'Normalize', status: 'done', detail: `Normalized ${pipelineStats.nodesNormalized} nodes` },
+        { name: 'Validate', status: 'done', detail: `${pipelineStats.issueCount.error} errors, ${pipelineStats.issueCount.warning} warnings, ${pipelineStats.issueCount.info} info` },
+        { name: 'Build UI Tree', status: 'done', detail: `${stats.totalNodes} total nodes` },
+        { name: 'Generate Code', status: 'done', detail: '4 platforms' },
+      ],
+    },
+    designSystem,
+    fileKey,
+    componentName,
+  });
+}
