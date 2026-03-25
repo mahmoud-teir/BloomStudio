@@ -66,6 +66,7 @@ interface LibraryViewProps {
   assetStats?: AssetStats | null;
   assetErrors?: string[];
   fileKey?: string;
+  onAssetsLoaded?: (updated: ExtractedAsset[]) => void;
 }
 
 function collectReusable(node: UINode, result: UINode[] = []): UINode[] {
@@ -83,13 +84,15 @@ function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
   return map;
 }
 
-export function LibraryView({ uiTree, stats, designSystem, assets = [], assetStats, assetErrors, fileKey }: LibraryViewProps) {
+export function LibraryView({ uiTree, stats, designSystem, assets = [], assetStats, assetErrors, fileKey, onAssetsLoaded }: LibraryViewProps) {
   const [activeSection, setActiveSection] = React.useState<'components' | 'types' | 'tokens' | 'assets'>('components');
   const [assetFilter, setAssetFilter] = React.useState<'all' | 'icon' | 'image'>('all');
   const [assetSearch, setAssetSearch] = React.useState('');
   const [assetViewMode, setAssetViewMode] = React.useState<'grid' | 'list'>('grid');
   const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
   const [downloadingAll, setDownloadingAll] = React.useState(false);
+  const [loadingPreviews, setLoadingPreviews] = React.useState(false);
+  const [previewError, setPreviewError] = React.useState<string | null>(null);
 
   if (!uiTree || !stats) {
     return (
@@ -182,6 +185,41 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
     }
   };
 
+  const handleLoadPreviews = async () => {
+    if (!fileKey || uniqueAssets.length === 0) return;
+    setLoadingPreviews(true);
+    setPreviewError(null);
+    try {
+      const svgIds = [...new Set(uniqueAssets.filter(a => a.format === 'svg').map(a => a.id))];
+      const pngIds = [...new Set(uniqueAssets.filter(a => a.format === 'png').map(a => a.id))];
+      const res = await fetch('/api/assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileKey, svgIds, pngIds }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.errors?.length) {
+        setPreviewError(data.errors[0]);
+      }
+      // Merge URLs into assets
+      const svgUrls: Record<string, string | null> = data.svgUrls || {};
+      const pngUrls: Record<string, string | null> = data.pngUrls || {};
+      const updated = assets.map(a => {
+        const urlMap = a.format === 'svg' ? svgUrls : pngUrls;
+        return urlMap[a.id] ? { ...a, exportUrl: urlMap[a.id]! } : a;
+      });
+      onAssetsLoaded?.(updated);
+    } catch (e: any) {
+      setPreviewError(e.message || 'Failed to load previews');
+    } finally {
+      setLoadingPreviews(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
@@ -247,11 +285,21 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
                     {downloadingAll ? 'Downloading...' : 'Download All Assets'}
                   </button>
                 ) : (
-                  <span className="text-[10px] text-yellow-400/60 px-3 py-1 rounded-lg bg-yellow-400/5 border border-yellow-400/10">
-                    {assetErrors && assetErrors.length > 0
-                      ? `Preview failed: ${assetErrors[0]}`
-                      : 'Preview URLs unavailable — try re-running the engine'}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleLoadPreviews}
+                      disabled={loadingPreviews}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all disabled:opacity-50"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      {loadingPreviews ? 'Loading Previews...' : 'Load Previews'}
+                    </button>
+                    {previewError && (
+                      <span className="text-[10px] text-yellow-400/60 px-2 py-1 rounded-lg bg-yellow-400/5 border border-yellow-400/10 max-w-[250px] truncate">
+                        {previewError}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
 
