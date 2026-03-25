@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFigmaFile } from "@/lib/figma-api";
 import { runPipeline } from "@/lib/pipeline";
 import { buildUITree, getTreeStats } from "@/lib/smart-parser";
-import { generateReactComponent } from "@/lib/codegen";
+import { generateSmartReactFile } from "@/lib/codegen-react";
 import { generateSwiftUIFile } from "@/lib/codegen-swiftui";
 import { generateSmartComposeFile } from "@/lib/codegen-compose-ai";
 import { generateFlutterFile } from "@/lib/codegen-flutter";
@@ -32,11 +32,19 @@ function sanitizeName(name: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const { url } = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const url = typeof body?.url === 'string' ? body.url.trim() : '';
   if (!url) return NextResponse.json({ error: "Missing url" }, { status: 400 });
+  if (url.length > 2000) return NextResponse.json({ error: "URL too long" }, { status: 400 });
 
   const parsed = parseFigmaUrl(url);
-  if (!parsed) return NextResponse.json({ error: "Invalid Figma URL" }, { status: 400 });
+  if (!parsed) return NextResponse.json({ error: "Invalid Figma URL. Expected format: https://www.figma.com/design/<file-key>/..." }, { status: 400 });
 
   const { fileKey, nodeId } = parsed;
 
@@ -60,7 +68,7 @@ export async function POST(request: NextRequest) {
   const componentName = sanitizeName(uiTree.name || fileData.name || 'FigmaComponent');
   const designSystem = extractDesignSystem(rawNode);
 
-  const reactCode = generateReactComponent(cleanedTree, componentName);
+  const reactCode = generateSmartReactFile(uiTree, componentName);
   const swiftUICode = generateSwiftUIFile(uiTree, componentName);
   const composeCode = generateSmartComposeFile(uiTree, componentName);
   const flutterCode = generateFlutterFile(uiTree, componentName);
