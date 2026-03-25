@@ -18,17 +18,25 @@ interface UINode {
   height?: number;
 }
 
-interface DesignToken {
+// Matches the actual shape returned by design-system.ts extractDesignSystem()
+interface DesignColor {
+  hex: string;
   name: string;
-  value: string;
   count: number;
+  opacity: number;
+}
+
+interface DesignFont {
+  family: string;
+  sizes: number[];
+  weights: number[];
 }
 
 interface DesignSystem {
-  colors: DesignToken[];
-  fonts: DesignToken[];
-  spacings: DesignToken[];
-  radii: DesignToken[];
+  colors: DesignColor[];
+  fonts: DesignFont[];
+  spacings: number[];
+  radii: number[];
 }
 
 interface ExtractedAsset {
@@ -114,7 +122,7 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
   const sections = [
     { key: 'components' as const, label: 'Components', count: Object.keys(grouped).length },
     { key: 'types' as const, label: 'Types', count: Object.keys(typeBreakdown).length },
-    { key: 'tokens' as const, label: 'Tokens', count: designSystem ? designSystem.colors.length + designSystem.fonts.length : 0 },
+    { key: 'tokens' as const, label: 'Tokens', count: designSystem ? designSystem.colors.length + designSystem.fonts.length + designSystem.spacings.length + designSystem.radii.length : 0 },
     { key: 'assets' as const, label: 'Assets', count: uniqueAssets.length },
   ];
 
@@ -228,14 +236,20 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
                     <span className="text-xs text-white/30">{assetStats.uniqueNodes} unique nodes</span>
                   )}
                 </div>
-                <button
-                  onClick={handleDownloadAllAssets}
-                  disabled={downloadingAll || !uniqueAssets.some(a => a.exportUrl)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium gradient-primary text-obsidian-lowest hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  {downloadingAll ? 'Downloading...' : 'Download All Assets'}
-                </button>
+                {uniqueAssets.some(a => a.exportUrl) ? (
+                  <button
+                    onClick={handleDownloadAllAssets}
+                    disabled={downloadingAll}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium gradient-primary text-obsidian-lowest hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {downloadingAll ? 'Downloading...' : 'Download All Assets'}
+                  </button>
+                ) : (
+                  <span className="text-[10px] text-yellow-400/60 px-3 py-1 rounded-lg bg-yellow-400/5 border border-yellow-400/10">
+                    Preview URLs unavailable — try re-running the engine
+                  </span>
+                )}
               </div>
 
               {/* Filters + Search */}
@@ -293,13 +307,16 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
                             alt={asset.originalName}
                             className="max-w-full max-h-full object-contain"
                             loading="lazy"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                            }}
                           />
-                        ) : (
-                          <div className="flex flex-col items-center text-white/20">
-                            {asset.category === 'icon' ? <FileType className="w-8 h-8" /> : <ImageIcon className="w-8 h-8" />}
-                            <span className="text-[9px] mt-1">No preview</span>
-                          </div>
-                        )}
+                        ) : null}
+                        <div className={cn('flex flex-col items-center text-white/20', asset.exportUrl && 'hidden')}>
+                          {asset.category === 'icon' ? <FileType className="w-8 h-8" /> : <ImageIcon className="w-8 h-8" />}
+                          <span className="text-[9px] mt-1">{asset.width}x{asset.height}</span>
+                        </div>
 
                         {/* Download overlay */}
                         {asset.exportUrl && (
@@ -458,15 +475,16 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
             <div className="glass-card rounded-2xl p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Palette className="w-4 h-4 text-white/40" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-white/40">Colors</h3>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-white/40">Colors ({designSystem.colors.length})</h3>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {designSystem.colors.slice(0, 20).map((token: DesignToken, i: number) => (
+                {designSystem.colors.slice(0, 24).map((color, i) => (
                   <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-white/[0.03] hover:bg-white/5 transition-colors">
-                    <div className="w-8 h-8 rounded-lg border border-white/10 flex-shrink-0" style={{ backgroundColor: token.value }} />
+                    <div className="w-8 h-8 rounded-lg border border-white/10 flex-shrink-0" style={{ backgroundColor: color.hex, opacity: color.opacity }} />
                     <div className="min-w-0">
-                      <p className="text-xs font-mono text-white/60 truncate">{token.value}</p>
-                      <p className="text-[10px] text-white/30">{token.count}x used</p>
+                      <p className="text-[10px] font-medium text-white/50 truncate">{color.name}</p>
+                      <p className="text-xs font-mono text-white/60 truncate">{color.hex}</p>
+                      <p className="text-[10px] text-white/30">{color.count}x used</p>
                     </div>
                   </div>
                 ))}
@@ -479,13 +497,26 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
             <div className="glass-card rounded-2xl p-6">
               <div className="flex items-center gap-2 mb-4">
                 <TypeIcon className="w-4 h-4 text-white/40" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-white/40">Typography</h3>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-white/40">Typography ({designSystem.fonts.length})</h3>
               </div>
-              <div className="space-y-2">
-                {designSystem.fonts.map((token: DesignToken, i: number) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03]">
-                    <span className="text-sm text-white/70" style={{ fontFamily: token.name }}>{token.name} — {token.value}</span>
-                    <span className="text-[10px] text-white/30">{token.count}x</span>
+              <div className="space-y-3">
+                {designSystem.fonts.map((font, i) => (
+                  <div key={i} className="p-4 rounded-lg bg-white/[0.03]">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-white/80" style={{ fontFamily: font.family }}>{font.family}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <span className="text-[10px] text-white/30 uppercase tracking-wider">Sizes:</span>
+                      {font.sizes.map(s => (
+                        <span key={s} className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-white/50 font-mono">{s}px</span>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="text-[10px] text-white/30 uppercase tracking-wider">Weights:</span>
+                      {font.weights.map(w => (
+                        <span key={w} className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-white/50 font-mono">{w}</span>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -497,14 +528,13 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
             <div className="glass-card rounded-2xl p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Ruler className="w-4 h-4 text-white/40" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-white/40">Spacing</h3>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-white/40">Spacing ({designSystem.spacings.length})</h3>
               </div>
               <div className="flex flex-wrap gap-2">
-                {designSystem.spacings.map((token: DesignToken, i: number) => (
+                {designSystem.spacings.map((value, i) => (
                   <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03]">
-                    <div className="bg-electric-blue/20 rounded" style={{ width: Math.min(Number(token.value) || 8, 48), height: 8 }} />
-                    <span className="text-xs font-mono text-white/50">{token.value}px</span>
-                    <span className="text-[10px] text-white/20">{token.count}x</span>
+                    <div className="bg-electric-blue/20 rounded" style={{ width: Math.min(value, 48), height: 8 }} />
+                    <span className="text-xs font-mono text-white/50">{value}px</span>
                   </div>
                 ))}
               </div>
@@ -516,14 +546,13 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
             <div className="glass-card rounded-2xl p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Circle className="w-4 h-4 text-white/40" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-white/40">Border Radii</h3>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-white/40">Border Radii ({designSystem.radii.length})</h3>
               </div>
               <div className="flex flex-wrap gap-2">
-                {designSystem.radii.map((token: DesignToken, i: number) => (
+                {designSystem.radii.map((value, i) => (
                   <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03]">
-                    <div className="w-6 h-6 border border-electric-blue/30 bg-electric-blue/5" style={{ borderRadius: Number(token.value) || 0 }} />
-                    <span className="text-xs font-mono text-white/50">{token.value}px</span>
-                    <span className="text-[10px] text-white/20">{token.count}x</span>
+                    <div className="w-6 h-6 border border-electric-blue/30 bg-electric-blue/5" style={{ borderRadius: value }} />
+                    <span className="text-xs font-mono text-white/50">{value}px</span>
                   </div>
                 ))}
               </div>
