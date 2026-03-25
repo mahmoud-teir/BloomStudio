@@ -83,6 +83,8 @@ export async function POST(request: NextRequest) {
   const svgUrls: Record<string, string | null> = {};
   const pngUrls: Record<string, string | null> = {};
 
+  const assetErrors: string[] = [];
+
   async function batchFetchImages(ids: string[], format: 'svg' | 'png', scale: number, target: Record<string, string | null>) {
     const batchSize = 50;
     for (let i = 0; i < ids.length; i += batchSize) {
@@ -91,24 +93,32 @@ export async function POST(request: NextRequest) {
         const data = await getFigmaImages(fileKey, batch, format, scale);
         if (data.images) {
           Object.assign(target, data.images);
+        } else if (data.err) {
+          const msg = `Figma API error (${format}): ${data.err}`;
+          console.error(msg);
+          assetErrors.push(msg);
         }
-      } catch (err) {
-        console.error(`Asset batch fetch failed (${format}, batch ${i}):`, err);
-        // Continue with remaining batches
+      } catch (err: any) {
+        const msg = `Asset batch fetch failed (${format}, batch ${Math.floor(i / batchSize)}): ${err.message || err}`;
+        console.error(msg);
+        assetErrors.push(msg);
       }
     }
   }
 
-  // Fetch SVG and PNG URLs in parallel (errors are handled per-batch inside batchFetchImages)
-  await Promise.all([
-    svgIds.length > 0 ? batchFetchImages(svgIds, 'svg', 1, svgUrls) : Promise.resolve(),
-    pngIds.length > 0 ? batchFetchImages(pngIds, 'png', 2, pngUrls) : Promise.resolve(),
-  ]).catch((err) => {
-    console.error('Asset fetch pipeline error:', err);
-  });
+  // Fetch SVG and PNG URLs in parallel
+  if (svgIds.length > 0 || pngIds.length > 0) {
+    await Promise.all([
+      svgIds.length > 0 ? batchFetchImages(svgIds, 'svg', 1, svgUrls) : Promise.resolve(),
+      pngIds.length > 0 ? batchFetchImages(pngIds, 'png', 2, pngUrls) : Promise.resolve(),
+    ]).catch((err) => {
+      assetErrors.push(`Asset fetch pipeline error: ${err.message || err}`);
+    });
+  }
 
   const assets = attachExportUrls(rawAssets, svgUrls, pngUrls);
   const assetStats = getAssetStats(assets);
+  const assetsWithUrls = assets.filter(a => a.exportUrl).length;
 
   return NextResponse.json({
     stats,
@@ -124,12 +134,13 @@ export async function POST(request: NextRequest) {
         { name: 'Validate', status: 'done', detail: `${pipelineStats.issueCount.error} errors, ${pipelineStats.issueCount.warning} warnings, ${pipelineStats.issueCount.info} info` },
         { name: 'Build UI Tree', status: 'done', detail: `${stats.totalNodes} total nodes` },
         { name: 'Generate Code', status: 'done', detail: '4 platforms' },
-        { name: 'Extract Assets', status: 'done', detail: `${assetStats.icons} icons, ${assetStats.images} images` },
+        { name: 'Extract Assets', status: assetErrors.length > 0 ? 'warning' : 'done', detail: `${assetStats.icons} icons, ${assetStats.images} images (${assetsWithUrls} with preview URLs)${assetErrors.length > 0 ? ` — ${assetErrors[0]}` : ''}` },
       ],
     },
     designSystem,
     assets,
     assetStats,
+    assetErrors: assetErrors.length > 0 ? assetErrors : undefined,
     fileKey,
     componentName,
   });
