@@ -220,6 +220,20 @@ export function LibraryView({ uiTree, stats, designSystem, assets = [], assetSta
     }
   };
 
+  // Auto-load previews when Assets tab is opened
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (
+      activeSection === 'assets' &&
+      fileKey &&
+      uniqueAssets.length > 0 &&
+      !uniqueAssets.some(a => a.exportUrl) &&
+      !loadingPreviews
+    ) {
+      handleLoadPreviews();
+    }
+  }, [activeSection]);
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">

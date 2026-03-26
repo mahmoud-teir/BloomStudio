@@ -24,6 +24,7 @@ export interface FigmaNode {
   paddingBottom?: number;
   opacity?: number;
   visible?: boolean;
+  exportSettings?: Array<{ suffix: string; format: string; constraint?: { type: string; value: number } }>;
 }
 
 export function parseFigmaColor(color: { r: number; g: number; b: number; a: number }) {

@@ -5,8 +5,8 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Lazy-load asset export URLs from Figma Images API.
- * Called on-demand when the user opens the Assets tab, avoiding
- * rate limits that occur when fetching during the main generate request.
+ * Called on-demand when the user opens the Assets tab.
+ * Batches large ID sets to avoid URL length limits.
  *
  * POST /api/assets
  * Body: { fileKey, svgIds: string[], pngIds: string[] }
@@ -38,15 +38,15 @@ export async function POST(request: NextRequest) {
   if (totalIds === 0) {
     return NextResponse.json({ svgUrls: {}, pngUrls: {}, errors: [] });
   }
-  if (totalIds > 500) {
-    return NextResponse.json({ error: "Too many asset IDs (max 500)" }, { status: 400 });
+  if (totalIds > 2000) {
+    return NextResponse.json({ error: "Too many asset IDs (max 2000)" }, { status: 400 });
   }
 
   const svgUrls: Record<string, string | null> = {};
   const pngUrls: Record<string, string | null> = {};
   const errors: string[] = [];
 
-  async function fetchWithRetry(
+  async function fetchBatched(
     ids: string[],
     format: "svg" | "png",
     scale: number,
@@ -54,42 +54,32 @@ export async function POST(request: NextRequest) {
   ) {
     if (ids.length === 0) return;
 
-    const maxRetries = 3;
-    const backoffs = [3000, 8000, 15000]; // aligned with Figma's rate window
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const batchSize = 50;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
       try {
-        const data = await getFigmaImages(validFileKey, ids, format, scale);
+        const data = await getFigmaImages(validFileKey, batch, format, scale);
         if (data.images) {
           Object.assign(target, data.images);
         } else if (data.err) {
           errors.push(`Figma API error (${format}): ${data.err}`);
         }
-        return; // success
       } catch (err: any) {
-        const is429 =
-          err.message?.includes("429") || err.response?.status === 429;
-        if (is429 && attempt < maxRetries) {
-          console.warn(
-            `Rate limited (${format}), retry ${attempt + 1}/${maxRetries} in ${backoffs[attempt]}ms`
-          );
-          await delay(backoffs[attempt]);
-          continue;
-        }
-        errors.push(
-          `Asset fetch failed (${format}): ${err.message || err}`
-        );
-        return;
+        errors.push(`Asset fetch failed (${format}): ${err.message || err}`);
+      }
+      // Delay between batches to avoid rate limits
+      if (i + batchSize < ids.length) {
+        await delay(1000);
       }
     }
   }
 
-  // Fetch SVG first, then PNG (sequential to minimize rate limit pressure)
-  await fetchWithRetry(svgIds, "svg", 1, svgUrls);
+  // Fetch SVG URLs (batched), then PNG URLs (batched)
+  await fetchBatched(svgIds, "svg", 1, svgUrls);
   if (svgIds.length > 0 && pngIds.length > 0) {
-    await delay(1000); // breathing room between requests
+    await delay(1000);
   }
-  await fetchWithRetry(pngIds, "png", 2, pngUrls);
+  await fetchBatched(pngIds, "png", 2, pngUrls);
 
   return NextResponse.json({ svgUrls, pngUrls, errors });
 }
