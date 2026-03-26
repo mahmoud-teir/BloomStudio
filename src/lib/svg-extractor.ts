@@ -15,8 +15,6 @@ import { FigmaNode } from './parser';
 
 /* ──────────── Asset Categories ──────────── */
 
-const MAX_ASSET_NODES = 100; // Cap to avoid Figma API rate limits
-
 export type AssetCategory = 'icon' | 'image' | 'drawable';
 
 export interface ExtractedAsset {
@@ -86,6 +84,16 @@ function isVectorExportable(node: FigmaNode): boolean {
   return true;
 }
 
+function hasExportSettings(node: FigmaNode): boolean {
+  return Array.isArray(node.exportSettings) && node.exportSettings.length > 0;
+}
+
+function getExportFormat(node: FigmaNode): 'svg' | 'png' {
+  const settings = node.exportSettings;
+  if (settings?.some(s => s.format === 'SVG')) return 'svg';
+  return 'png';
+}
+
 function isExportableComponent(node: FigmaNode): boolean {
   // COMPONENT or INSTANCE that are medium-sized (not tiny icons, not full screens)
   if (node.type !== 'COMPONENT' && node.type !== 'INSTANCE') return false;
@@ -109,10 +117,22 @@ export function extractAllAssets(root: FigmaNode): ExtractedAsset[] {
 
   function traverse(node: FigmaNode) {
     if (!node || node.visible === false) return;
-    if (seenIds.size >= MAX_ASSET_NODES) return; // cap reached
 
     const w = node.absoluteBoundingBox?.width || 0;
     const h = node.absoluteBoundingBox?.height || 0;
+
+    // ── Designer-marked exports (strongest signal) ──
+    if (hasExportSettings(node) && !seenIds.has(node.id) && w > 0 && h > 0) {
+      seenIds.add(node.id);
+      const name = sanitizeName(node.name);
+      const format = getExportFormat(node);
+      const category: AssetCategory = format === 'svg' ? 'icon' : 'image';
+      assets.push({ id: node.id, name, originalName: node.name, category, format, width: Math.round(w), height: Math.round(h) });
+      if (format === 'svg') {
+        assets.push({ id: node.id, name, originalName: node.name, category: 'drawable', format: 'svg', width: Math.round(w), height: Math.round(h) });
+      }
+      return; // designer already chose what to export
+    }
 
     // ── Icons (SVG) ──
     if (isIconNode(node) && !seenIds.has(node.id)) {
