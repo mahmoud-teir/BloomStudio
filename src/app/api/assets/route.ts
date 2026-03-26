@@ -5,8 +5,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Lazy-load asset export URLs from Figma Images API.
- * Called on-demand when the user opens the Assets tab, avoiding
- * rate limits that occur when fetching during the main generate request.
+ * Called on-demand when the user opens the Assets tab.
  *
  * POST /api/assets
  * Body: { fileKey, svgIds: string[], pngIds: string[] }
@@ -33,7 +32,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "svgIds and pngIds must be arrays" }, { status: 400 });
   }
 
-  const validFileKey: string = fileKey;
   const totalIds = svgIds.length + pngIds.length;
   if (totalIds === 0) {
     return NextResponse.json({ svgUrls: {}, pngUrls: {}, errors: [] });
@@ -46,50 +44,38 @@ export async function POST(request: NextRequest) {
   const pngUrls: Record<string, string | null> = {};
   const errors: string[] = [];
 
-  async function fetchWithRetry(
-    ids: string[],
-    format: "svg" | "png",
-    scale: number,
-    target: Record<string, string | null>
-  ) {
-    if (ids.length === 0) return;
-
-    const maxRetries = 3;
-    const backoffs = [3000, 8000, 15000]; // aligned with Figma's rate window
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const data = await getFigmaImages(validFileKey, ids, format, scale);
-        if (data.images) {
-          Object.assign(target, data.images);
-        } else if (data.err) {
-          errors.push(`Figma API error (${format}): ${data.err}`);
-        }
-        return; // success
-      } catch (err: any) {
-        const is429 =
-          err.message?.includes("429") || err.response?.status === 429;
-        if (is429 && attempt < maxRetries) {
-          console.warn(
-            `Rate limited (${format}), retry ${attempt + 1}/${maxRetries} in ${backoffs[attempt]}ms`
-          );
-          await delay(backoffs[attempt]);
-          continue;
-        }
-        errors.push(
-          `Asset fetch failed (${format}): ${err.message || err}`
-        );
-        return;
+  // Fetch SVG URLs (getFigmaImages already has retry with backoff)
+  if (svgIds.length > 0) {
+    try {
+      const data = await getFigmaImages(fileKey, svgIds, "svg", 1);
+      if (data.images) {
+        Object.assign(svgUrls, data.images);
+      } else if (data.err) {
+        errors.push(`Figma API error (svg): ${data.err}`);
       }
+    } catch (err: any) {
+      errors.push(`Asset fetch failed (svg): ${err.message || err}`);
     }
   }
 
-  // Fetch SVG first, then PNG (sequential to minimize rate limit pressure)
-  await fetchWithRetry(svgIds, "svg", 1, svgUrls);
+  // Delay between SVG and PNG to avoid rate limits
   if (svgIds.length > 0 && pngIds.length > 0) {
-    await delay(1000); // breathing room between requests
+    await delay(1000);
   }
-  await fetchWithRetry(pngIds, "png", 2, pngUrls);
+
+  // Fetch PNG URLs
+  if (pngIds.length > 0) {
+    try {
+      const data = await getFigmaImages(fileKey, pngIds, "png", 2);
+      if (data.images) {
+        Object.assign(pngUrls, data.images);
+      } else if (data.err) {
+        errors.push(`Figma API error (png): ${data.err}`);
+      }
+    } catch (err: any) {
+      errors.push(`Asset fetch failed (png): ${err.message || err}`);
+    }
+  }
 
   return NextResponse.json({ svgUrls, pngUrls, errors });
 }

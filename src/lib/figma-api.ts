@@ -49,25 +49,20 @@ function getHeaders() {
 export async function getFigmaFile(fileKey: string, nodeId?: string) {
   // Figma URLs use "0-1" format but the API requires "0:1" (colon)
   const apiNodeId = nodeId?.replace(/-/g, ':');
-  const endpoint = apiNodeId
-    ? `${FIGMA_API_BASE}/files/${fileKey}/nodes`
+  const url = apiNodeId
+    ? `${FIGMA_API_BASE}/files/${fileKey}/nodes?ids=${apiNodeId}`
     : `${FIGMA_API_BASE}/files/${fileKey}`;
-  const url = new URL(endpoint);
-  if (apiNodeId) {
-    url.searchParams.append('ids', apiNodeId);
-  }
 
-  return fetchWithRetry(url.toString());
+  return fetchWithRetry(url);
 }
 
 /**
  * Fetch image nodes (e.g. SVG exports)
  */
 export async function getFigmaImages(fileKey: string, nodeIds: string[], format: 'svg' | 'png' | 'jpg' = 'svg', scale = 1) {
-  const url = new URL(`${FIGMA_API_BASE}/images/${fileKey}`);
-  url.searchParams.append('ids', nodeIds.join(','));
-  url.searchParams.append('format', format);
-  url.searchParams.append('scale', scale.toString());
+  // Build URL manually — URL.searchParams encodes colons (%3A) and commas (%2C)
+  // which Figma's API does not accept
+  const url = `${FIGMA_API_BASE}/images/${fileKey}?ids=${nodeIds.join(',')}&format=${format}&scale=${scale}`;
 
-  return fetchWithRetry(url.toString());
+  return fetchWithRetry(url);
 }
