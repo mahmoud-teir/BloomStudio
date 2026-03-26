@@ -7,8 +7,7 @@ import { generateSwiftUIFile } from "@/lib/codegen-swiftui";
 import { generateSmartComposeFile } from "@/lib/codegen-compose-ai";
 import { generateFlutterFile } from "@/lib/codegen-flutter";
 import { extractDesignSystem } from "@/lib/design-system";
-import { extractAllAssets, groupAssetsByFormat, attachExportUrls, getAssetStats } from "@/lib/svg-extractor";
-import { getFigmaImages } from "@/lib/figma-api";
+import { extractAllAssets, groupAssetsByFormat, getAssetStats } from "@/lib/svg-extractor";
 
 function parseFigmaUrl(url: string): { fileKey: string; nodeId?: string } | null {
   try {
@@ -79,67 +78,11 @@ export async function POST(request: NextRequest) {
   const rawAssets = extractAllAssets(rawNode);
   const { svgIds, pngIds } = groupAssetsByFormat(rawAssets);
 
-  // Fetch export URLs from Figma Images API (batch in chunks, with rate limit delays)
-  const svgUrls: Record<string, string | null> = {};
-  const pngUrls: Record<string, string | null> = {};
-
-  const assetErrors: string[] = [];
-
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-  async function batchFetchImages(ids: string[], format: 'svg' | 'png', scale: number, target: Record<string, string | null>) {
-    const batchSize = 30; // smaller batches to avoid rate limits
-    for (let i = 0; i < ids.length; i += batchSize) {
-      const batch = ids.slice(i, i + batchSize);
-      let retries = 0;
-      const maxRetries = 3;
-
-      while (retries <= maxRetries) {
-        try {
-          const data = await getFigmaImages(fileKey, batch, format, scale);
-          if (data.images) {
-            Object.assign(target, data.images);
-          } else if (data.err) {
-            const msg = `Figma API error (${format}): ${data.err}`;
-            console.error(msg);
-            assetErrors.push(msg);
-          }
-          break; // success, exit retry loop
-        } catch (err: any) {
-          const is429 = err.message?.includes('429') || err.response?.status === 429;
-          if (is429 && retries < maxRetries) {
-            retries++;
-            const backoff = retries * 2000; // 2s, 4s, 6s
-            console.warn(`Rate limited (${format} batch ${Math.floor(i / batchSize)}), retrying in ${backoff}ms...`);
-            await delay(backoff);
-            continue;
-          }
-          const msg = `Asset batch fetch failed (${format}, batch ${Math.floor(i / batchSize)}): ${err.message || err}`;
-          console.error(msg);
-          assetErrors.push(msg);
-          break;
-        }
-      }
-
-      // Small delay between batches to stay under rate limits
-      if (i + batchSize < ids.length) {
-        await delay(500);
-      }
-    }
-  }
-
-  // Fetch SVG and PNG URLs sequentially to avoid rate limits (not in parallel)
-  if (svgIds.length > 0) {
-    await batchFetchImages(svgIds, 'svg', 1, svgUrls);
-  }
-  if (pngIds.length > 0) {
-    if (svgIds.length > 0) await delay(500); // gap between SVG and PNG runs
-    await batchFetchImages(pngIds, 'png', 2, pngUrls);
-  }
-
-  const assets = attachExportUrls(rawAssets, svgUrls, pngUrls);
+  // Asset URLs are fetched lazily via /api/assets to avoid 429 rate limits.
+  // The generate endpoint returns assets without exportUrls — the client
+  // fetches previews on-demand when the user opens the Assets tab.
+  const assets = rawAssets;
   const assetStats = getAssetStats(assets);
-  const assetsWithUrls = assets.filter(a => a.exportUrl).length;
 
   return NextResponse.json({
     stats,
@@ -155,13 +98,12 @@ export async function POST(request: NextRequest) {
         { name: 'Validate', status: 'done', detail: `${pipelineStats.issueCount.error} errors, ${pipelineStats.issueCount.warning} warnings, ${pipelineStats.issueCount.info} info` },
         { name: 'Build UI Tree', status: 'done', detail: `${stats.totalNodes} total nodes` },
         { name: 'Generate Code', status: 'done', detail: '4 platforms' },
-        { name: 'Extract Assets', status: assetErrors.length > 0 ? 'warning' : 'done', detail: `${assetStats.icons} icons, ${assetStats.images} images (${assetsWithUrls} with preview URLs)${assetErrors.length > 0 ? ` — ${assetErrors[0]}` : ''}` },
+        { name: 'Extract Assets', status: 'done', detail: `${assetStats.icons} icons, ${assetStats.images} images (${svgIds.length} SVG + ${pngIds.length} PNG nodes)` },
       ],
     },
     designSystem,
     assets,
     assetStats,
-    assetErrors: assetErrors.length > 0 ? assetErrors : undefined,
     fileKey,
     componentName,
   });

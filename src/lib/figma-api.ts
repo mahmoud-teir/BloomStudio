@@ -7,6 +7,29 @@ import axios from 'axios';
 
 const FIGMA_API_BASE = 'https://api.figma.com/v1';
 
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithRetry(url: string, maxRetries = 3): Promise<any> {
+  const backoffs = [3000, 8000, 15000];
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await axios.get(url, {
+        headers: getHeaders(),
+        timeout: 30000,
+      });
+      return res.data;
+    } catch (error: any) {
+      const is429 = error.response?.status === 429;
+      if (is429 && attempt < maxRetries) {
+        console.warn(`Figma API rate limited, retry ${attempt + 1}/${maxRetries} in ${backoffs[attempt]}ms`);
+        await delay(backoffs[attempt]);
+        continue;
+      }
+      throw new Error(`Figma API error: ${error.message}${error.response?.data?.err ? ' - ' + error.response.data.err : ''}`);
+    }
+  }
+}
+
 /**
  * Helper to get the Figma Token from environment
  */
@@ -34,15 +57,7 @@ export async function getFigmaFile(fileKey: string, nodeId?: string) {
     url.searchParams.append('ids', apiNodeId);
   }
 
-  try {
-    const res = await axios.get(url.toString(), { 
-      headers: getHeaders(), 
-      timeout: 30000 
-    });
-    return res.data;
-  } catch (error: any) {
-    throw new Error(`Figma API error: ${error.message} - ${error.response?.data?.err || ''}`);
-  }
+  return fetchWithRetry(url.toString());
 }
 
 /**
@@ -54,13 +69,5 @@ export async function getFigmaImages(fileKey: string, nodeIds: string[], format:
   url.searchParams.append('format', format);
   url.searchParams.append('scale', scale.toString());
 
-  try {
-    const res = await axios.get(url.toString(), { 
-      headers: getHeaders(), 
-      timeout: 30000 
-    });
-    return res.data;
-  } catch (error: any) {
-    throw new Error(`Figma API error: ${error.message}`);
-  }
+  return fetchWithRetry(url.toString());
 }

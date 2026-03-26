@@ -15,6 +15,8 @@ import { FigmaNode } from './parser';
 
 /* ──────────── Asset Categories ──────────── */
 
+const MAX_ASSET_NODES = 100; // Cap to avoid Figma API rate limits
+
 export type AssetCategory = 'icon' | 'image' | 'drawable';
 
 export interface ExtractedAsset {
@@ -39,17 +41,24 @@ function sanitizeName(raw: string): string {
     .toLowerCase();
 }
 
+function hasSemanticName(name: string): boolean {
+  // Returns false for generic Figma auto-names like "Frame 123", "Group", "Rectangle 5"
+  const generic = /^(frame|group|rectangle|ellipse|line|vector|polygon|star|instance|component)\s*\d*$/i;
+  return !generic.test(name.trim());
+}
+
 function isIconNode(node: FigmaNode): boolean {
   const n = (node.name || '').toLowerCase();
-  // Name-based
+  // Name-based: explicit icon/logo names
   if (n.includes('icon') || n.startsWith('ic_') || n.startsWith('ic/') || n.includes('/icon') || n.includes('logo')) return true;
   // Size-based: small vector element (≤ 48px) that's not text
   if (node.absoluteBoundingBox) {
     const { width, height } = node.absoluteBoundingBox;
     if (width > 0 && width <= 48 && height > 0 && height <= 48 && node.type !== 'TEXT') {
-      // Must be a vector-like type or have children (component/instance)
-      const vectorLike = ['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'ELLIPSE', 'REGULAR_POLYGON', 'COMPONENT', 'INSTANCE'];
-      if (vectorLike.includes(node.type) || node.type === 'FRAME' || node.type === 'GROUP') return true;
+      const vectorLike = ['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'ELLIPSE', 'REGULAR_POLYGON', 'COMPONENT', 'INSTANCE'];
+      if (vectorLike.includes(node.type)) return true;
+      // FRAME/GROUP only if they have a meaningful name (not "Frame 12")
+      if ((node.type === 'FRAME' || node.type === 'GROUP') && hasSemanticName(node.name)) return true;
     }
   }
   return false;
@@ -69,8 +78,12 @@ function isImageNode(node: FigmaNode): boolean {
 }
 
 function isVectorExportable(node: FigmaNode): boolean {
-  const vectorTypes = ['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'ELLIPSE', 'REGULAR_POLYGON'];
-  return vectorTypes.includes(node.type);
+  // Skip LINE (usually separators/dividers, not meaningful assets)
+  const vectorTypes = ['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'ELLIPSE', 'REGULAR_POLYGON'];
+  if (!vectorTypes.includes(node.type)) return false;
+  // Skip generic auto-named vectors
+  if (!hasSemanticName(node.name)) return false;
+  return true;
 }
 
 function isExportableComponent(node: FigmaNode): boolean {
@@ -96,6 +109,7 @@ export function extractAllAssets(root: FigmaNode): ExtractedAsset[] {
 
   function traverse(node: FigmaNode) {
     if (!node || node.visible === false) return;
+    if (seenIds.size >= MAX_ASSET_NODES) return; // cap reached
 
     const w = node.absoluteBoundingBox?.width || 0;
     const h = node.absoluteBoundingBox?.height || 0;

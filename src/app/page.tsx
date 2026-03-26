@@ -119,7 +119,6 @@ export default function ObsidianDashboard() {
   const [previewImageUrl, setPreviewImageUrl] = React.useState('');
   const [assets, setAssets] = React.useState<ExtractedAsset[]>([]);
   const [assetStats, setAssetStats] = React.useState<AssetStats | null>(null);
-  const [assetErrors, setAssetErrors] = React.useState<string[]>([]);
 
   const handleGenerate = async () => {
     if (!url) return;
@@ -152,7 +151,6 @@ export default function ObsidianDashboard() {
       setComponentName(data.componentName || 'FigmaComponent');
       setAssets(data.assets || []);
       setAssetStats(data.assetStats || null);
-      setAssetErrors(data.assetErrors || []);
       setLatency(Date.now() - start);
 
       // Fetch preview image
@@ -428,7 +426,7 @@ export default function ObsidianDashboard() {
 
             {/* Library */}
             {activeTopNav === 'library' && (
-              <LibraryView uiTree={uiTree} stats={stats} designSystem={designSystem} assets={assets} assetStats={assetStats} assetErrors={assetErrors} fileKey={fileKey} />
+              <LibraryView uiTree={uiTree} stats={stats} designSystem={designSystem} assets={assets} assetStats={assetStats} fileKey={fileKey} onAssetsLoaded={setAssets} />
             )}
 
             {/* Deploy */}
