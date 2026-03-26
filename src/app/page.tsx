@@ -168,6 +168,39 @@ export default function ObsidianDashboard() {
     }
   };
 
+  const handleLoadProject = async (projectId: string) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/memory?id=${projectId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load project');
+      
+      setUrl(data.url || '');
+      setFileKey(data.fileKey || '');
+      setComponentName(data.componentName || 'FigmaComponent');
+      setCodeData(data.code);
+      setStats(data.stats);
+      setDesignSystem(data.designSystem);
+      setAssets(data.assets || []);
+      setAssetStats(data.assetStats || null);
+      
+      // Reset pipeline/trees since they are not saved in DB
+      setUiTree(null);
+      setCleanedTree(null);
+      setPipeline(null);
+      
+      if (data.fileKey) {
+        fetchPreviewImage(data.fileKey);
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Failed to load project';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchPreviewImage = async (fKey: string, nodeId?: string) => {
     try {
       const ids = nodeId ? nodeId.replace(/-/g, ':') : '0:1';
@@ -190,7 +223,15 @@ export default function ObsidianDashboard() {
         body: JSON.stringify({
           url,
           componentName: data.componentName,
+          fileKey: data.fileKey,
+          reactCode: data.code?.react,
+          swiftUICode: data.code?.swiftui,
+          composeCode: data.code?.compose,
+          flutterCode: data.code?.flutter,
           stats: data.stats,
+          designSystem: data.designSystem,
+          assets: data.assets,
+          assetStats: data.assetStats,
           generatedAt: new Date().toISOString(),
         }),
       });
@@ -396,6 +437,7 @@ export default function ObsidianDashboard() {
                 setUrl={setUrl}
                 loading={loading}
                 onGenerate={handleGenerate}
+                onLoadProject={handleLoadProject}
                 stats={stats}
                 latency={latency}
                 previewImageUrl={previewImageUrl}

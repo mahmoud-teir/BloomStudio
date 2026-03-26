@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Account {
@@ -66,6 +66,8 @@ model Project {
   flutterCode   String?
   stats         String?  // JSON string of generation stats
   designSystem  String?  // JSON string of extracted design system
+  assets        String?  // JSON string of extracted assets
+  assetStats    String?  // JSON string of asset stats
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   userId        String?

@@ -10,6 +10,7 @@ interface DesktopViewProps {
   setUrl: (url: string) => void;
   loading: boolean;
   onGenerate: () => void;
+  onLoadProject?: (id: string) => void;
   stats: any;
   latency: number;
   previewImageUrl: string;
@@ -18,9 +19,16 @@ interface DesktopViewProps {
 }
 
 export function DesktopView({
-  url, setUrl, loading, onGenerate, stats, latency, previewImageUrl, codeData, error,
+  url, setUrl, loading, onGenerate, onLoadProject, stats, latency, previewImageUrl, codeData, error,
 }: DesktopViewProps) {
   const [zoom, setZoom] = React.useState(1);
+  const [projects, setProjects] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    fetch('/api/memory').then(res => res.json()).then(data => {
+      if (data.projects) setProjects(data.projects);
+    }).catch(console.error);
+  }, []);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -60,6 +68,22 @@ export function DesktopView({
       {error && (
         <div className="mb-8 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm font-mono">
           Error: {error}
+        </div>
+      )}
+
+      {/* Project History */}
+      {!stats && projects.length > 0 && (
+        <div className="mb-12">
+          <h2 className="text-lg font-medium mb-4 text-white/80">Recent Projects</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map(p => (
+              <div key={p.id} onClick={() => onLoadProject?.(p.id)} className="glass-card p-4 rounded-xl cursor-pointer hover:bg-white/5 transition-all hover:scale-105 active:scale-95 group">
+                <p className="font-bold text-sm text-electric-blue group-hover:text-cyan-400 transition-colors">{p.componentName}</p>
+                <p className="text-xs text-white/40 truncate mt-1">{p.figmaUrl}</p>
+                <p className="text-[10px] text-white/30 mt-3">{new Date(p.createdAt).toLocaleString()}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
